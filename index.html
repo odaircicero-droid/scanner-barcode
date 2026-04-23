@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Simples</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #f0f0f0; }
+        #camera { width: 100%; height: 300px; background: #000; }
+        #camera video { width: 100%; height: 100%; object-fit: cover; }
+        .controles { padding: 20px; display: flex; gap: 10px; justify-content: center; }
+        button { padding: 15px; cursor: pointer; font-weight: bold; border-radius: 8px; border: none; }
+        .btn-ligar { background: #28a745; color: white; }
+        .btn-excel { background: #007bff; color: white; }
+        .tabela-container { padding: 10px; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <h2>Leitor de Código de Barras</h2>
+    
+    <div id="camera"></div>
+
+    <div class="controles">
+        <button class="btn-ligar" onclick="ligar()">LIGAR CÂMERA</button>
+        <button class="btn-excel" onclick="baixar()">SALVAR EXCEL</button>
+    </div>
+
+    <div class="tabela-container">
+        <table id="tabela-dados">
+            <thead>
+                <tr>
+                    <th>CÓDIGO</th>
+                    <th>HORA</th>
+                </tr>
+            </thead>
+            <tbody id="corpo"></tbody>
+        </table>
+    </div>
+
+    <script>
+        function ligar() {
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#camera'),
+                    constraints: { facingMode: "environment" }
+                },
+                decoder: { 
+                    // Focando nos leitores mais comuns para não pesar
+                    readers: ["ean_reader", "code_128_reader"] 
+                }
+            }, function(err) {
+                if (err) return alert("Erro ao abrir câmera: " + err);
+                Quagga.start();
+            });
+
+            Quagga.onDetected(function(result) {
+                const code = result.codeResult.code;
+                adicionarNaTabela(code);
+            });
+        }
+
+        let ultimoCodigo = "";
+        function adicionarNaTabela(code) {
+            // Evita repetir o mesmo código em sequência muito rápida
+            if (code === ultimoCodigo) return;
+            ultimoCodigo = code;
+            setTimeout(() => { ultimoCodigo = ""; }, 3000);
+
+            const corpo = document.getElementById('corpo');
+            const novaLinha = corpo.insertRow(0);
+            novaLinha.insertCell(0).innerText = code;
+            novaLinha.insertCell(1).innerText = new Date().toLocaleTimeString();
+
+            // Feedback sonoro simples
+            const audio = new Audio('https://www.soundjay.com/button/beep-07.wav');
+            audio.play();
+        }
+
+        function baixar() {
+            const tabela = document.getElementById('tabela-dados');
+            if (document.getElementById('corpo').rows.length === 0) {
+                return alert("Escaneie algo antes de salvar!");
+            }
+            const wb = XLSX.utils.table_to_book(tabela);
+            XLSX.writeFile(wb, "dados_capturados.xlsx");
+        }
+    </script>
+</body>
+</html>

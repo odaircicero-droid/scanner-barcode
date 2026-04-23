@@ -2,53 +2,54 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Gois v5</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner Gois Profissional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { background: #000; color: #00f2ff; font-family: Arial, sans-serif; margin: 0; padding: 10px; text-align: center; }
-        #canvas-camera { width: 100%; height: 250px; border: 2px solid #00f2ff; border-radius: 10px; overflow: hidden; background: #111; }
-        #canvas-camera video { width: 100%; height: 100%; object-fit: cover; }
-        .controls { display: flex; gap: 10px; margin: 15px 0; }
-        button { flex: 1; padding: 15px; border-radius: 5px; border: 1px solid #00f2ff; background: #000; color: #00f2ff; font-weight: bold; cursor: pointer; }
-        #btn-save { border-color: #a200ff; color: #a200ff; }
-        .table-area { background: #111; border-radius: 5px; margin-top: 10px; max-height: 200px; overflow-y: auto; }
-        table { width: 100%; border-collapse: collapse; color: #fff; font-size: 14px; }
-        th, td { padding: 10px; border-bottom: 1px solid #333; text-align: center; }
+        body { background: #000; color: #00f2ff; font-family: sans-serif; margin: 0; text-align: center; overflow-x: hidden; }
+        #camera { width: 100%; height: 300px; background: #111; border-bottom: 2px solid #00f2ff; position: relative; }
+        #camera video { width: 100%; height: 100%; object-fit: cover; }
+        .controls { padding: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 18px; border-radius: 8px; border: 1px solid #00f2ff; background: rgba(0,242,255,0.1); color: #00f2ff; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 11px; }
+        button:active { background: #00f2ff; color: #000; }
+        .table-container { padding: 10px; background: #0a0a0a; min-height: 200px; }
+        table { width: 100%; border-collapse: collapse; color: #fff; }
+        th { border-bottom: 2px solid #00f2ff; padding: 10px; color: #00f2ff; }
+        td { padding: 12px; border-bottom: 1px solid #222; font-family: monospace; font-size: 16px; }
     </style>
 </head>
 <body>
 
-    <h3>GOIS ESQUADRIAS - SCAN</h3>
-    
-    <div id="canvas-camera"></div>
+    <div id="camera"></div>
 
     <div class="controls">
-        <button onclick="iniciar()">LIGAR</button>
-        <button id="btn-save" onclick="baixar()">SALVAR EXCEL</button>
+        <button onclick="ligar()">Ligar Câmera</button>
+        <button onclick="baixar()" style="border-color:#a200ff; color:#a200ff;">Baixar Excel</button>
     </div>
 
-    <div class="table-area">
-        <table id="tabela-main">
-            <thead>
-                <tr><th>CÓDIGO</th><th>HORA</th></tr>
-            </thead>
-            <tbody id="lista-corpo"></tbody>
+    <div class="table-container">
+        <table id="tabela-final">
+            <thead><tr><th>CÓDIGO</th><th>HORA</th></tr></thead>
+            <tbody id="lista"></tbody>
         </table>
     </div>
 
     <script>
-        function iniciar() {
+        function ligar() {
             Quagga.init({
                 inputStream: {
                     name: "Live",
                     type: "LiveStream",
-                    target: document.querySelector('#canvas-camera'),
-                    constraints: { facingMode: "environment" }
+                    target: document.querySelector('#camera'),
+                    constraints: {
+                        facingMode: "environment",
+                        aspectRatio: { min: 1, max: 2 }
+                    },
                 },
-                decoder: {
-                    readers: ["code_128_reader", "ean_reader"]
+                locator: { patchSize: "medium", halfSample: true },
+                decoder: { 
+                    readers: ["ean_reader", "code_128_reader", "code_39_reader", "upc_reader"] 
                 },
                 locate: true
             }, function(err) {
@@ -56,36 +57,34 @@
                 Quagga.start();
             });
 
-            Quagga.onDetected(function(result) {
-                var code = result.codeResult.code;
-                adicionar(code);
+            Quagga.onDetected(function(res) {
+                const code = res.codeResult.code;
+                registrar(code);
             });
         }
 
-        var ultimo = "";
-        function adicionar(code) {
-            if (code === ultimo) return; 
-            ultimo = code;
+        let bloqueio = false;
+        function registrar(code) {
+            if (bloqueio) return;
+            bloqueio = true;
 
-            var corpo = document.getElementById('lista-corpo');
-            var row = corpo.insertRow(0);
+            const lista = document.getElementById('lista');
+            const row = lista.insertRow(0);
             row.insertCell(0).innerHTML = code;
             row.insertCell(1).innerHTML = new Date().toLocaleTimeString();
 
-            // Beep e Vibração
             if (navigator.vibrate) navigator.vibrate(100);
-            new Audio('https://www.soundjay.com/button/beep-07.wav').play();
-            
-            // Pequena pausa para não ler o mesmo código 100 vezes
-            setTimeout(() => { ultimo = ""; }, 2000);
+            new Audio('https://www.soundjay.com/button/beep-07.wav').play().catch(()=>{});
+
+            // Espera 2 segundos para permitir a próxima leitura
+            setTimeout(() => { bloqueio = false; }, 2000);
         }
 
         function baixar() {
-            var tab = document.getElementById('tabela-main');
-            if (tab.rows.length <= 1) return alert("Escaneie algo primeiro!");
-            
-            var wb = XLSX.utils.table_to_book(tab);
-            XLSX.writeFile(wb, "Relatorio_Scanner.xlsx");
+            const table = document.getElementById('tabela-final');
+            if (document.getElementById('lista').rows.length === 0) return alert("Nada lido!");
+            const wb = XLSX.utils.table_to_book(table);
+            XLSX.writeFile(wb, "Relatorio_Gois_Final.xlsx");
         }
     </script>
 </body>

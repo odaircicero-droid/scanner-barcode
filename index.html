@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Pro | Enterprise</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --primary: #00f2ff; --secondary: #7000ff; --bg: #050505; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .header { text-align: center; padding: 1.5rem; font-family: 'Orbitron', sans-serif; letter-spacing: 2px; color: var(--primary); }
+        #scanner-container { position: relative; width: 90%; max-width: 500px; height: 250px; border-radius: 15px; overflow: hidden; border: 2px solid var(--primary); margin-bottom: 20px; background: #000; }
+        #scanner-container video { width: 100%; height: 100%; object-fit: cover; }
+        .scan-line { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: var(--primary); box-shadow: 0 0 15px var(--primary); animation: moveScan 2s infinite linear; z-index: 10; }
+        @keyframes moveScan { 0% { top: 0%; } 100% { top: 100%; } }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; width: 90%; }
+        button { flex: 1; background: rgba(0, 242, 255, 0.1); border: 1px solid var(--primary); color: var(--primary); padding: 15px; border-radius: 10px; font-weight: bold; font-family: 'Orbitron', sans-serif; cursor: pointer; }
+        button:active { background: var(--primary); color: #000; }
+        .data-table-container { width: 90%; background: rgba(255,255,255,0.05); border-radius: 15px; padding: 10px; max-height: 300px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th { color: var(--primary); text-align: left; padding: 8px; border-bottom: 1px solid var(--primary); }
+        td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body>
+
+    <div class="header"><h1>PRO SCANNER</h1></div>
+
+    <div id="scanner-container"><div class="scan-line"></div></div>
+
+    <div class="controls">
+        <button onclick="startScanner()">LIGAR</button>
+        <button onclick="exportToExcel()" style="border-color: #7000ff; color: #7000ff;">SALVAR EXCEL</button>
+    </div>
+
+    <div class="data-table-container">
+        <table>
+            <thead><tr><th>CÓDIGO</th><th>HORA</th></tr></thead>
+            <tbody id="result-list"></tbody>
+        </table>
+    </div>
+
+    <script>
+        let scannedData = [];
+        let lastCode = "";
+        let lastTime = 0;
+
+        // Som de bip para feedback
+        const beep = new Audio("https://www.soundjay.com/button/beep-07.wav");
+
+        function startScanner() {
+            Quagga.init({
+                inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#scanner-container'), constraints: { facingMode: "environment" } },
+                decoder: { readers: ["ean_reader", "code_128_reader", "code_39_reader"] }
+            }, (err) => {
+                if (err) return alert("Erro na câmera: " + err);
+                Quagga.start();
+            });
+
+            Quagga.onDetected((data) => {
+                const code = data.codeResult.code;
+                const now = Date.now();
+
+                // Só registra se for um código diferente ou se passou 3 segundos (evita spam)
+                if (code !== lastCode || (now - lastTime > 3000)) {
+                    beep.play();
+                    lastCode = code;
+                    lastTime = now;
+                    
+                    const timeString = new Date().toLocaleTimeString();
+                    scannedData.unshift({ CODIGO: code, HORARIO: timeString });
+                    updateTable();
+                    
+                    if (navigator.vibrate) navigator.vibrate(100);
+                }
+            });
+        }
+
+        function updateTable() {
+            const html = scannedData.map(item => `
+                <tr>
+                    <td style="color:var(--primary)">${item.CODIGO}</td>
+                    <td>${item.HORARIO}</td>
+                </tr>
+            `).join('');
+            document.getElementById('result-list').innerHTML = html;
+        }
+
+        function exportToExcel() {
+            if (scannedData.length === 0) return alert("A lista está vazia!");
+            
+            const ws = XLSX.utils.json_to_sheet(scannedData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "ScannerData");
+            XLSX.writeFile(wb, "captura_codigos.xlsx");
+        }
+    </script>
+</body>
+</html>
